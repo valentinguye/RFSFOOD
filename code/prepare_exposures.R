@@ -153,43 +153,44 @@ for(year in pretreatment_years){
   
   # Now split data by Element
   unique(fb$Element)
-  food_s_kcalcapday <- fb[fb$Element=="Food supply (kcal/capita/day)", c("Area", "Item", "Value")]
-  prot_s_gcapday <- fb[fb$Element=="Protein supply quantity (g/capita/day)", c("Area", "Item", "Value")]
-  fat_s_gcapday <- fb[fb$Element=="Fat supply quantity (g/capita/day)", c("Area", "Item", "Value")]
+  # "Food (1000 tonnes)" is the annual quantity available
+  # "Food supply quantity (kg/capita/yr)" is the annual quantity available, but divided by population
+  elmt_wide_ds_list <- list()
+  for(elmt in unique(fb$Element)){
+    long_ds <- fb[fb$Element==elmt, c("Area", "Item", "Value")]
+    
+    wide_ds <- stats::reshape(long_ds,
+                              # varying = unique(long_ds$Item),
+                              # v.names = c("Value"),
+                              sep = ".",
+                              timevar = "Item",
+                              idvar = "Area", 
+                              direction = "wide",
+                              new.row.names = NULL)  
+    
+                vars_slct <- grepl("Value.", names(wide_ds))
+                
+                # those variables that have been reshaped, give the Element identifier to their names
+                names(wide_ds)[vars_slct] <- paste0(names(wide_ds)[vars_slct], " -- ", elmt)
+                # checked that "--" is not used in names already 
+                # any(grepl("--", names(wide_ds)))
+                
+                # remove "Value." part in names
+                names(wide_ds)[vars_slct] <- gsub("Value.", "", 
+                                                  x = names(wide_ds)[vars_slct])
   
-  import_kt <- fb[fb$Element=="Import Quantity (1000 tonnes)", c("Area", "Item", "Value")]
-  dom_s_kt <- fb[fb$Element=="Domestic supply quantity (1000 tonnes)", c("Area", "Item", "Value")]
-  # annual quantity available
-  food_kt <- fb[fb$Element=="Food (1000 tonnes)", c("Area", "Item", "Value")]
 
-  # the annual quantity available, but divided by population
-  food_s_kgcapyr <- fb[fb$Element=="Food supply quantity (kg/capita/yr)", c("Area", "Item", "Value")]
+    elmt_wide_ds_list[[elmt]] <- wide_ds
+  }
   
-  ## RESHAPE  
   
-  # let's reshape element-datasets separately
   # and then join them back based on country key
+  wide_fb <- elmt_wide_ds_list[[1]]
+  for(i in 2:length(elmt_wide_ds_list)){
+    wide_fb <- left_join(wide_fb, elmt_wide_ds_list[[i]], by = "Area")
+  }
+  # at this point, 175 rows, one for each country, and 808 columns, one for each type Element*Item 
   
-  
-  varying_vars <- list(names(losscropland), 
-                       names(lossoilpalmboth),
-                       names(lossoilpalmindus),
-                       names(losspasture))
-  #varying_vars <- names(drivenloss_gaez)[grep(".", names(drivenloss_gaez), fixed = TRUE)]
-  
-  # reshape to long.
-  wide_fb <- stats::reshape(fb,
-                            varying = varying_vars,
-                            v.names = c("loss_cropland", "loss_oilpalm_both", "loss_oilpalm_indus", "loss_pasture"),
-                            sep = ".",
-                            timevar = "year",
-                            idvar = "grid_id", # don't put "lon" and "lat" in there, otherwise memory issue (see https://r.789695.n4.nabble.com/reshape-makes-R-run-out-of-memory-PR-14121-td955889.html)
-                            ids = "grid_id", # lonlat is our cross-sectional identifier.
-                            direction = "wide",
-                            new.row.names = NULL)#seq(from = 1, to = nrow(ibs_msk_df)*length(years), by = 1)
-  rm(wide_df)
-  names(long_df)
-  unique(fb$Flag.Description)
   
  
 }

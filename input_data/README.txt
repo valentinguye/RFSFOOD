@@ -14,3 +14,6 @@ SA_XBT_trade_dataset is a detailed import-export data set. Different source than
 
 FAOSTAT_* from FAOSTAT website
 foodbalances before 2010 are not in ISO3 country code
+
+Items comprise all of "ITEMS" and "ITEMS AGGREGATED".
+

@@ -144,6 +144,8 @@ selected_items <- c("Cereals - Excluding Beer",
                     "Palm Oil")
 
 
+#### MAKE DATA WIDE --------------------------------------------------------------------------------------------
+
 pretreatment_years <- c(2001, 2002, 2003, 2004, 2005)
 year <- 2001
 # list to store annual data sets prepared
@@ -313,18 +315,25 @@ for(year in pretreatment_years){
 
   wide_fb[grepl("China", wide_fb$Area), c("Area", "Rice (Milled Equivalent) -- Production (1000 tonnes)")]
   
-  # Remove French Polynesia
+  # Remove oversea territories
   # wide_fb[grepl("Fr", wide_fb$Area), c("Area", "Rice (Milled Equivalent) -- Production (1000 tonnes)")]
   wide_fb <- dplyr::filter(wide_fb, Area != "French Polynesia")
-  
-  # Remove "Netherlands Antilles (former)"
   wide_fb <- dplyr::filter(wide_fb, Area != "Netherlands Antilles (former)")
+  wide_fb <- dplyr::filter(wide_fb, Area != "Bermuda")
+  wide_fb <- dplyr::filter(wide_fb, Area != "New Caledonia")
   
   # Handle some weird names 
   # "TÃ¼rkiye" and "CÃ´te d'Ivoire" 
   wide_fb$Area[wide_fb$Area == "TÃ¼rkiye"] <- "Turkey"
+  wide_fb$Area[wide_fb$Area == "T?rkiye"] <- "Turkey"
   # wide_fb[grepl("Tur", wide_fb$Area), c("Area", "Rice (Milled Equivalent) -- Production (1000 tonnes)")]
+  # wide_fb[grepl("?", wide_fb$Area), c("Area", "Rice (Milled Equivalent) -- Production (1000 tonnes)")]
   wide_fb$Area[wide_fb$Area == "CÃ´te d'Ivoire"] <- "Ivory Coast"
+  wide_fb$Area[wide_fb$Area == "C?te d'Ivoire"] <- "Ivory Coast"
+  
+  # CONGO - this is special: there is only one Congo in the data, named simply "Congo". 
+  # Checking by the population size in the data, it is the Republic of the Congo (i.e. Congo Brazzaville)
+  wide_fb$Area[wide_fb$Area == "Congo"] <- "Republic of the Congo"
   
   # Keep track of the year 
   wide_fb$year <- year
@@ -335,11 +344,195 @@ for(year in pretreatment_years){
 # stack to make a panel of food balance data  
 pfb <- bind_rows(wide_fb_list)
 # rm(wide_fb_list, wide_fb)
+# unique(pfb$Area)
+
+
+
+
+#### RDC & LIBYA -----------------------------------------------------------
+
+# Let us handle here the fact that the Democratic Republic of Congo is missing in FAOSTAT Food Balance data before 2010. 
+wide_rdc_list <- list()
+rdc_years <- c(2010, 2011)
+for(year in rdc_years){
+  rdc <- read.csv(here("input_data", "exposure_variables", paste0("FAOSTAT_",year,"_RDCLibya_foodbalances_aggritems.csv")))
+
+  # unique(rdc$Item)[grepl("meal", unique(rdc$Item))]
+  
+  # the first row names gets weird "ï.." prefixe
+  # names(rdc)[1] <- "Domain.Code"
+  
+  # the domain is the common to the whole data set "Food Balances (-2013, old methodology and population)" so we can remove it
+  unique(rdc$Domain) 
+  
+  rdc <- rdc[, !grepl("Domain", names(rdc))]
+  
+  ## Area and area code are bijective 
+  length(unique(rdc$Area)) == length(unique(rdc$Area.Code..FAO.)) # NOTICE it's a different name for area code than in FB -2013 data 
+  rdc <- dplyr::select(rdc, -Area.Code..FAO.)
+  
+  ## Element
+  unique(rdc$Element)
+  # "Food supply (kcal/capita/day)"          
+  # "Protein supply quantity (g/capita/day)" 
+  # "Fat supply quantity (g/capita/day)"   
+  # "Production"
+  # "Import Quantity"      
+  # "Stock Variation" 
+  # "Export Quantity" 
+  # "Domestic supply quantity"               
+  # "Food"                                  
+  # "Food supply quantity (kg/capita/yr)"   
+  
+  # Element and Element.Code are bijective 
+  length(unique(rdc$Element)) == length(unique(rdc$Element.Code))
+  rdc <- dplyr::select(rdc, -Element.Code)
+  
+  ## Item 
+  unique(rdc$Item)
+  
+  # there are some Items that have more than one Item.Code
+  length(unique(rdc$Item)) == length(unique(rdc$Item.Code))
+  
+  spot_doublones <- sapply(unique(rdc$Item), function(itm){itm_length <- rdc[rdc$Item==itm,"Item.Code"] %>% unique() %>% length() 
+  itm_spot <- if_else(itm_length > 1, true = itm, false = "")
+  return(itm_spot) })
+  spot_doublones[spot_doublones != ""]
+  
+  rdc[rdc$Item == "Eggs","Item.Code"] %>% unique()
+  rdc[rdc$Item == "Milk - Excluding Butter","Item.Code"] %>% unique()
+  rdc[rdc$Item == "Miscellaneous","Item.Code"] %>% unique()
+  
+  rdc[rdc$Item == "Eggs",] 
+  rdc[rdc$Item == "Miscellaneous",] 
+  
+  # they seem to be the same figures, or almost, but with different Flags (not always) --> let's keep only one instance
+  
+  # Items with several item codes are duplicates (within the same country and Element)
+  rdc[duplicated(rdc[,c("Area", "Element", "Item")]), ] %>% nrow() # 2951 obs. in 2001
+  # we want those that are not duplicates
+  rdc <- rdc[!duplicated(rdc[,c("Area", "Element", "Item")]), ]
+  
+  if(!(length(unique(rdc$Item)) == length(unique(rdc$Item.Code)))){
+    stop("there are still duplicates in Item variable")
+  }
+  
+  rdc <- dplyr::select(rdc, -Item.Code)
+  
+  # And some items have different names than in main (old) FB (-2013) 
+  rdc$Item[!(rdc$Item %in% fb$Item)] %>% unique()
+  rdc$Item[rdc$Item=="Rice and products"] <- "Rice (Milled Equivalent)"
+  rdc$Item[rdc$Item=="Groundnuts"] <- "Groundnuts (Shelled Eq)"
+  
+  # keep only Items specified
+  rdc <- dplyr::filter(rdc, Item %in% all_items)
+  
+  ## Year
+  rdc <- dplyr::select(rdc, -Year.Code)
+  # Year is not useful either
+  rdc <- dplyr::select(rdc, -Year)
+  
+  
+  ## Unit 
+  # For "Import Quantity", "Domestic supply quantity" & "Food", the unit is not given in the Element. 
+  
+  # some checks that the units are expressed in a sound way
+  prod_u <- rdc[rdc$Element=="Production", "Unit"] %>% unique()
+  import_u <- rdc[rdc$Element=="Import Quantity", "Unit"] %>% unique()
+  export_u <- rdc[rdc$Element=="Export Quantity", "Unit"] %>% unique()
+  stock_u <- rdc[rdc$Element=="Stock Variation", "Unit"] %>% unique()
+  dom_supply_u <- rdc[rdc$Element=="Domestic supply quantity", "Unit"] %>% unique()
+  food_u <- rdc[rdc$Element=="Food", "Unit"] %>% unique()
+  
+  
+  if(length(import_u) > 1 | length(dom_supply_u) > 1 | length(food_u) > 1 | 
+     length(prod_u) > 1 | length(export_u) > 1 | length(stock_u) > 1 ){
+    stop("different units used within Elements")
+  }
+  if(!all.equal(import_u, dom_supply_u, food_u, prod_u, export_u, stock_u)){
+    stop("different units used across Elements")
+  }
+  if(import_u != "1000 tonnes"){
+    stop("different units used across YEARS")
+  }
+  
+  u_less_slct <- rdc$Element %in% c("Production", "Import Quantity", "Export Quantity", "Stock Variation", 
+                                   "Domestic supply quantity", "Food")
+  rdc[u_less_slct,] <- mutate(rdc[u_less_slct,], Element = paste0(Element, " (",Unit,")"))
+  
+  rdc <- dplyr::select(rdc, -Unit)
+   
+  ## For the moment, do not bother Flags
+  rdc <- rdc[, !grepl("Flag", names(rdc))]
+  
+  # Now split data by Element
+  unique(rdc$Element)
+  # "Food (1000 tonnes)" is the annual quantity available
+  # "Food supply quantity (kg/capita/yr)" is the annual quantity available, but divided by population
+  elmt_wide_ds_list <- list()
+  for(elmt in unique(rdc$Element)){
+    long_ds <- rdc[rdc$Element==elmt, c("Area", "Item", "Value")]
+    
+    wide_ds <- stats::reshape(long_ds,
+                              # varying = unique(long_ds$Item),
+                              # v.names = c("Value"),
+                              sep = ".",
+                              timevar = "Item",
+                              idvar = "Area", 
+                              direction = "wide",
+                              new.row.names = NULL)  
+    
+    vars_slct <- grepl("Value.", names(wide_ds))
+    
+    # those variables that have been reshaped, give the Element identifier to their names
+    names(wide_ds)[vars_slct] <- paste0(names(wide_ds)[vars_slct], " -- ", elmt)
+    # checked that " -- " is not used in names already 
+    # any(grepl(" -- ", names(wide_ds)))
+    
+    # remove "Value." part in names
+    names(wide_ds)[vars_slct] <- gsub("Value.", "", 
+                                      x = names(wide_ds)[vars_slct])
+    
+    elmt_wide_ds_list[[elmt]] <- wide_ds
+  }
+  rm(wide_ds)
+  
+  # and then join them back based on country key
+  wide_rdc <- elmt_wide_ds_list[[1]]
+  for(i in 2:length(elmt_wide_ds_list)){
+    wide_rdc <- left_join(wide_rdc, elmt_wide_ds_list[[i]], by = "Area")
+  }
+  
+  
+  # Keep track of the year 
+  wide_rdc$year <- year
+  
+  wide_rdc_list[[match(year, rdc_years)]] <- wide_rdc
+  
+}
+prdc <- bind_rows(wide_rdc_list)
+
+### MERGE RDC CONGO DATA WITH MAIN ONE 
+
+# Not as many Element*Item data rows are available, as for the global, old, food balance data (-2013). 
+# This prevents from row binding with panel of all countries
+# Simply add the columns missing, filled with NAs 
+missing_col_names <- names(pfb)[!(names(pfb) %in% names(prdc))]
+# (all names in rdc data are in global data)
+names(prdc)[!(names(prdc) %in% names(pfb))]
+
+missing_cols <- matrix(data = NA, ncol = length(missing_col_names), nrow = nrow(prdc))
+colnames(missing_cols) <- missing_col_names
+missing_cols <- as.data.frame(missing_cols)
+prdc <- cbind(prdc, missing_cols)
+ 
+pfb <- rbind(prdc, pfb)
 
 # for convenience
 row.names(pfb) <- dplyr::mutate(pfb, Area_year = paste0(Area, "_", year))$Area_year
 
-#### PREPARE CONVERSION FACTORS #### 
+#### PREPARE CONVERSION FACTORS -----------------------------------------------------------------------------------------
+
 # Retrieve conversion factors (weights to nutritional contents), for aggregated categories, and individual commodities (main ones only)
 
 # pfb[, names(pfb) %in% paste0(categories, " -- ","Food supply (kcal/capita/day)")] %>% head()
@@ -438,6 +631,11 @@ for(item in c(categories, cereals, oilcrops, vegetable_oils)){#
 }
 # pfb[,grep("Miscellaneous", names(pfb), value = TRUE)] %>% head()
 
+
+
+
+#### MAKE STATISTICS OF INTEREST ---------------------------------------------------------------------------------
+
 ### SUM OVER CATEGORIES OF ITEMS 
 for(nutrient in c("kcal", "gprot", "gfat")){
   pfb <- dplyr::mutate(pfb, !!as.symbol(paste0("import_",nutrient,"_total")) := base::rowSums(across(.cols = any_of(paste0("import_",nutrient," -- ", categories)) ), na.rm = TRUE))
@@ -461,14 +659,14 @@ summary(pfb$dependency_calorie)
 
 # Dependency through some selected crops
 for(item in selected_items){
-  pfb[, paste0("dependency -- ",item)] <- pfb[, paste0("import_kcal -- ",item)] /
-                                          pfb[, paste0("gross_supply_kcal -- ",item)]
+  pfb[, paste0("dependency_calorie -- ",item)] <- pfb[, paste0("import_kcal -- ",item)] /
+                                                  pfb[, paste0("gross_supply_kcal -- ",item)]
   
-  pfb[, paste0("dependency -- ",item)] <- pfb[, paste0("import_gprot -- ",item)] /
-                                          pfb[, paste0("gross_supply_gprot -- ",item)]
+  pfb[, paste0("dependency_protein -- ",item)] <- pfb[, paste0("import_gprot -- ",item)] /
+                                                  pfb[, paste0("gross_supply_gprot -- ",item)]
   
-  pfb[, paste0("dependency -- ",item)] <- pfb[, paste0("import_gfat -- ",item)] /
-                                          pfb[, paste0("gross_supply_gfat -- ",item)]
+  pfb[, paste0("dependency_fat -- ",item)] <- pfb[, paste0("import_gfat -- ",item)] /
+                                              pfb[, paste0("gross_supply_gfat -- ",item)]
 }
 
 
@@ -493,22 +691,31 @@ csfb5 <- ddply(pfb, "Area", summarise,
               !!as.symbol("gprot_per_kg -- Fish, Seafood") := mean(!!as.symbol("gprot_per_kg -- Fish, Seafood"), na.rm = TRUE), 
               !!as.symbol("gfat_per_kg -- Vegetable Oils") := mean(!!as.symbol("gfat_per_kg -- Vegetable Oils"), na.rm = TRUE), 
               
-              !!as.symbol("dependency -- Cereals - Excluding Beer") := mean(!!as.symbol("dependency -- Cereals - Excluding Beer"), na.rm = TRUE), 
-              !!as.symbol("dependency -- Wheat and products") := mean(!!as.symbol("dependency -- Wheat and products"), na.rm = TRUE), 
-              !!as.symbol("dependency -- Rice (Milled Equivalent)") := mean(!!as.symbol("dependency -- Rice (Milled Equivalent)"), na.rm = TRUE), 
-              !!as.symbol("dependency -- Barley and products") := mean(!!as.symbol("dependency -- Barley and products"), na.rm = TRUE), 
-              !!as.symbol("dependency -- Maize and products") := mean(!!as.symbol("dependency -- Maize and products"), na.rm = TRUE), 
-              !!as.symbol("dependency -- Soyabeans") := mean(!!as.symbol("dependency -- Soyabeans"), na.rm = TRUE), 
-              !!as.symbol("dependency -- Vegetable Oils") := mean(!!as.symbol("dependency -- Vegetable Oils"), na.rm = TRUE), 
-              !!as.symbol("dependency -- Soyabean Oil") := mean(!!as.symbol("dependency -- Soyabean Oil"), na.rm = TRUE), 
-              !!as.symbol("dependency -- Sunflowerseed Oil") := mean(!!as.symbol("dependency -- Sunflowerseed Oil"), na.rm = TRUE), 
-              !!as.symbol("dependency -- Rape and Mustard Oil") := mean(!!as.symbol("dependency -- Rape and Mustard Oil"), na.rm = TRUE), 
-              !!as.symbol("dependency -- Palm Oil") := mean(!!as.symbol("dependency -- Palm Oil"), na.rm = TRUE) 
+              # Dependency through specific crops
+              !!as.symbol("dependency_calorie -- Cereals - Excluding Beer") := mean(!!as.symbol("dependency_calorie -- Cereals - Excluding Beer"), na.rm = TRUE), 
+              !!as.symbol("dependency_calorie -- Wheat and products") := mean(!!as.symbol("dependency_calorie -- Wheat and products"), na.rm = TRUE), 
+              !!as.symbol("dependency_calorie -- Rice (Milled Equivalent)") := mean(!!as.symbol("dependency_calorie -- Rice (Milled Equivalent)"), na.rm = TRUE), 
+              !!as.symbol("dependency_calorie -- Barley and products") := mean(!!as.symbol("dependency_calorie -- Barley and products"), na.rm = TRUE), 
+              !!as.symbol("dependency_calorie -- Maize and products") := mean(!!as.symbol("dependency_calorie -- Maize and products"), na.rm = TRUE), 
+              !!as.symbol("dependency_calorie -- Soyabeans") := mean(!!as.symbol("dependency_calorie -- Soyabeans"), na.rm = TRUE), 
+              !!as.symbol("dependency_calorie -- Vegetable Oils") := mean(!!as.symbol("dependency_calorie -- Vegetable Oils"), na.rm = TRUE), 
+              !!as.symbol("dependency_calorie -- Soyabean Oil") := mean(!!as.symbol("dependency_calorie -- Soyabean Oil"), na.rm = TRUE), 
+              !!as.symbol("dependency_calorie -- Sunflowerseed Oil") := mean(!!as.symbol("dependency_calorie -- Sunflowerseed Oil"), na.rm = TRUE), 
+              !!as.symbol("dependency_calorie -- Rape and Mustard Oil") := mean(!!as.symbol("dependency_calorie -- Rape and Mustard Oil"), na.rm = TRUE), 
+              !!as.symbol("dependency_calorie -- Palm Oil") := mean(!!as.symbol("dependency_calorie -- Palm Oil"), na.rm = TRUE),
               
-              )
+              # conversion factors, for some major items: 
+              !!as.symbol("kcal_per_kg -- Cereals - Excluding Beer") := mean(!!as.symbol("kcal_per_kg -- Cereals - Excluding Beer"), na.rm = TRUE), 
+              !!as.symbol("kcal_per_kg -- Vegetable Oils") := mean(!!as.symbol("kcal_per_kg -- Vegetable Oils"), na.rm = TRUE), 
+              !!as.symbol("gprot_per_kg -- Meat") := mean(!!as.symbol("gprot_per_kg -- Meat"), na.rm = TRUE), 
+              !!as.symbol("gprot_per_kg -- Fish, Seafood") := mean(!!as.symbol("gprot_per_kg -- Fish, Seafood"), na.rm = TRUE), 
+              !!as.symbol("gfat_per_kg -- Vegetable Oils") := mean(!!as.symbol("gfat_per_kg -- Vegetable Oils"), na.rm = TRUE)
+            )
 
 # alternatively, average over the two most recent years only
-csfb2 <- ddply(pfb[pfb$year == 2004 | pfb$year == 2005,], "Area", summarise, 
+csfb2 <- ddply(pfb[pfb$year == 2004 | pfb$year == 2005 | pfb$year == 2010 | pfb$year == 2011,], 
+               "Area", 
+               summarise, 
                # Main dependency variables: 
                dependency_calorie = mean(dependency_calorie, na.rm = TRUE), 
                dependency_protein = mean(dependency_protein, na.rm = TRUE), 
@@ -529,86 +736,134 @@ csfb2 <- ddply(pfb[pfb$year == 2004 | pfb$year == 2005,], "Area", summarise,
                !!as.symbol("gprot_per_kg -- Fish, Seafood") := mean(!!as.symbol("gprot_per_kg -- Fish, Seafood"), na.rm = TRUE), 
                !!as.symbol("gfat_per_kg -- Vegetable Oils") := mean(!!as.symbol("gfat_per_kg -- Vegetable Oils"), na.rm = TRUE), 
                
-               !!as.symbol("dependency -- Cereals - Excluding Beer") := mean(!!as.symbol("dependency -- Cereals - Excluding Beer"), na.rm = TRUE), 
-               !!as.symbol("dependency -- Wheat and products") := mean(!!as.symbol("dependency -- Wheat and products"), na.rm = TRUE), 
-               !!as.symbol("dependency -- Rice (Milled Equivalent)") := mean(!!as.symbol("dependency -- Rice (Milled Equivalent)"), na.rm = TRUE), 
-               !!as.symbol("dependency -- Barley and products") := mean(!!as.symbol("dependency -- Barley and products"), na.rm = TRUE), 
-               !!as.symbol("dependency -- Maize and products") := mean(!!as.symbol("dependency -- Maize and products"), na.rm = TRUE), 
-               !!as.symbol("dependency -- Soyabeans") := mean(!!as.symbol("dependency -- Soyabeans"), na.rm = TRUE), 
-               !!as.symbol("dependency -- Vegetable Oils") := mean(!!as.symbol("dependency -- Vegetable Oils"), na.rm = TRUE), 
-               !!as.symbol("dependency -- Soyabean Oil") := mean(!!as.symbol("dependency -- Soyabean Oil"), na.rm = TRUE), 
-               !!as.symbol("dependency -- Sunflowerseed Oil") := mean(!!as.symbol("dependency -- Sunflowerseed Oil"), na.rm = TRUE), 
-               !!as.symbol("dependency -- Rape and Mustard Oil") := mean(!!as.symbol("dependency -- Rape and Mustard Oil"), na.rm = TRUE), 
-               !!as.symbol("dependency -- Palm Oil") := mean(!!as.symbol("dependency -- Palm Oil"), na.rm = TRUE) 
+               # Dependency through specific crops
+               !!as.symbol("dependency_calorie -- Cereals - Excluding Beer") := mean(!!as.symbol("dependency_calorie -- Cereals - Excluding Beer"), na.rm = TRUE), 
+               !!as.symbol("dependency_calorie -- Wheat and products") := mean(!!as.symbol("dependency_calorie -- Wheat and products"), na.rm = TRUE), 
+               !!as.symbol("dependency_calorie -- Rice (Milled Equivalent)") := mean(!!as.symbol("dependency_calorie -- Rice (Milled Equivalent)"), na.rm = TRUE), 
+               !!as.symbol("dependency_calorie -- Barley and products") := mean(!!as.symbol("dependency_calorie -- Barley and products"), na.rm = TRUE), 
+               !!as.symbol("dependency_calorie -- Maize and products") := mean(!!as.symbol("dependency_calorie -- Maize and products"), na.rm = TRUE), 
+               !!as.symbol("dependency_calorie -- Soyabeans") := mean(!!as.symbol("dependency_calorie -- Soyabeans"), na.rm = TRUE), 
+               !!as.symbol("dependency_calorie -- Vegetable Oils") := mean(!!as.symbol("dependency_calorie -- Vegetable Oils"), na.rm = TRUE), 
+               !!as.symbol("dependency_calorie -- Soyabean Oil") := mean(!!as.symbol("dependency_calorie -- Soyabean Oil"), na.rm = TRUE), 
+               !!as.symbol("dependency_calorie -- Sunflowerseed Oil") := mean(!!as.symbol("dependency_calorie -- Sunflowerseed Oil"), na.rm = TRUE), 
+               !!as.symbol("dependency_calorie -- Rape and Mustard Oil") := mean(!!as.symbol("dependency_calorie -- Rape and Mustard Oil"), na.rm = TRUE), 
+               !!as.symbol("dependency_calorie -- Palm Oil") := mean(!!as.symbol("dependency_calorie -- Palm Oil"), na.rm = TRUE),
                
-)
+               # conversion factors, for some major items: 
+               !!as.symbol("kcal_per_kg -- Cereals - Excluding Beer") := mean(!!as.symbol("kcal_per_kg -- Cereals - Excluding Beer"), na.rm = TRUE), 
+               !!as.symbol("kcal_per_kg -- Vegetable Oils") := mean(!!as.symbol("kcal_per_kg -- Vegetable Oils"), na.rm = TRUE), 
+               !!as.symbol("gprot_per_kg -- Meat") := mean(!!as.symbol("gprot_per_kg -- Meat"), na.rm = TRUE), 
+               !!as.symbol("gprot_per_kg -- Fish, Seafood") := mean(!!as.symbol("gprot_per_kg -- Fish, Seafood"), na.rm = TRUE), 
+               !!as.symbol("gfat_per_kg -- Vegetable Oils") := mean(!!as.symbol("gfat_per_kg -- Vegetable Oils"), na.rm = TRUE)
+              )
 
-summary(csfb$dependency_calorie)
-summary(csfb$dependency_protein)
-summary(csfb$dependency_fat)
+summary(csfb5$dependency_calorie)
+summary(csfb5$dependency_protein)
+summary(csfb5$dependency_fat)
 
-#### Data exploration  #### 
 
+#### Data exploration  -----------------------------------------------------------------------------------------------
 
 sffb <- st_read(here("input_data", "Global_LSIB_Polygons_Detailed"))
 
 names(sffb)[names(sffb) == "COUNTRY_NA"] <- "Area"
+# sffb[grepl("ongo", sffb$Area), ]
+# pfb[grepl("ongo", pfb$Area), "Area"]
 
 ### Match country names to those from FAOSTAT 
-# Note that some FAOSTAT names have been modified above already 
+## /!\ NEXT TIME CONSIDER USING A FAOSTAT ADMIN BOUNDARIES MAP DIRECTLY ! 
+# (but some advantages to adjust manually some things here)
 
-sffb$Area[sffb$Area=="United States"] <- "United States of America"
-sffb$Area[sffb$Area=="Iran"] <- "Iran (Islamic Republic of)"
-sffb$Area[sffb$Area=="Spain [Canary Is]"] <- "Spain"
-sffb$Area[sffb$Area=="Burma"] <- "Myanmar"
-sffb$Area[sffb$Area=="Bahamas, The"] <- "Bahamas"
-# sffb$Area[sffb$Area=="Taiwan"] 
-sffb$Area[sffb$Area=="Vietnam"] <- "Viet Nam"
+# Note that some FAOSTAT names have been modified above already (they are on top here)
+# Note also that we do not associate islands to their main country, for simplicity (by commenting their section out)
+sffb$Area[sffb$Area=="Cote d'Ivoire"] <- "Ivory Coast" # NOTICE THIS (FAOSTAT name is Côte d'Ivoire)
+sffb$Area[sffb$Area=="Congo, Rep of the"] <- "Republic of the Congo" # This name is not from FAOSTAT, I changed it above
+
+# Political discrepancies
+sffb$Area[sffb$Area=="China"] <- "China, mainland" # NOTICE THIS 
 sffb$Area[sffb$Area=="Hong Kong (Ch)"] <- "China, Hong Kong SAR"
 sffb$Area[sffb$Area=="Macau (Ch)"] <- "China, Macao SAR"
-sffb$Area[sffb$Area=="Turks & Caicos Is (UK)"] <- "United Kingdom of Great Britain and Northern Ireland"
+# sffb$Area[sffb$Area=="Taiwan"] 
+sffb$Area[sffb$Area=="Serbia"] <- "Serbia and Montenegro" # Montenegro independent since 2006, after our data period
+
+# for Sudan and South Sudan, they will be splitted in the anaysis period. They will have outcome data separately. 
+# But they will have exactly the same treatment. So we can treat them as within the same cluster, 
+# or merge them into a single country, with average outcome. 
+sffb[sffb$Area=="Sudan", "geometry"] <- st_union(sffb[sffb$Area == "Sudan", "geometry"], 
+                                                      sffb[sffb$Area == "South Sudan", "geometry"]) # %>% dplyr::select(geometry)
+
+sffb$Area[sffb$Area=="Sudan"] <- "Sudan (former)" # South Sudan independent since 2005, after our data period
+
+# Countries for which it's simply a matter of different way to write the name down
+sffb$Area[sffb$Area=="Congo, Dem Rep of the"] <- "Democratic Republic of the Congo"
+sffb$Area[sffb$Area=="Macedonia"] <- "North Macedonia"
+sffb$Area[sffb$Area=="United Kingdom"] <- "United Kingdom of Great Britain and Northern Ireland"
+sffb$Area[sffb$Area=="United States"] <- "United States of America"
+sffb$Area[sffb$Area=="Russia"] <- "Russian Federation"
+sffb$Area[sffb$Area=="Bosnia & Herzegovina"] <- "Bosnia and Herzegovina"
+sffb$Area[sffb$Area=="Korea, North"] <- "Democratic People's Republic of Korea"
+sffb$Area[sffb$Area=="Korea, South"] <- "Republic of Korea"
+sffb$Area[sffb$Area=="Moldova"] <- "Republic of Moldova"
+sffb$Area[sffb$Area=="Gambia, The"] <- "Gambia"
+sffb$Area[sffb$Area=="Swaziland"] <- "Eswatini"
+sffb$Area[sffb$Area=="Iran"] <- "Iran (Islamic Republic of)"
+sffb$Area[sffb$Area=="Burma"] <- "Myanmar"
+sffb$Area[sffb$Area=="Bahamas, The"] <- "Bahamas"
+sffb$Area[sffb$Area=="Vietnam"] <- "Viet Nam"
 sffb$Area[sffb$Area=="Laos"] <- "Lao People's Democratic Republic"
-sffb$Area[sffb$Area=="Cayman Is (UK)"] <- "United Kingdom of Great Britain and Northern Ireland"
-sffb$Area[sffb$Area=="Northern Mariana Is (US)"] <- "United States of America"
-sffb$Area[sffb$Area=="Puerto Rico (US)"] <- "United States of America"
-sffb$Area[sffb$Area=="Br Virgin Is (UK)"] <- "United Kingdom of Great Britain and Northern Ireland"
-sffb$Area[sffb$Area=="US Virgin Is (US)"] <- "United States of America"
 sffb$Area[sffb$Area=="Antigua & Barbuda"] <- "Antigua and Barbuda"
 sffb$Area[sffb$Area=="St Kitts & Nevis"] <- "Saint Kitts and Nevis"
-sffb$Area[sffb$Area=="Montserrat (UK)"] <- "United Kingdom of Great Britain and Northern Ireland"
-sffb$Area[sffb$Area=="Guadeloupe (Fr)"] <- "France"
-sffb$Area[sffb$Area=="Martinique (Fr)"] <- "France"
 sffb$Area[sffb$Area=="St Lucia"] <- "Saint Lucia"
-sffb$Area[sffb$Area=="Guam (US)"] <- "United States of America"
 sffb$Area[sffb$Area=="St Vincent & the Grenadines"] <- "Saint Vincent and the Grenadines"
 sffb$Area[sffb$Area=="Venezuela"] <- "Venezuela (Bolivarian Republic of)"
 sffb$Area[sffb$Area=="Trinidad & Tobago"] <- "Trinidad and Tobago"
-sffb$Area[sffb$Area=="Cote d'Ivoire"] <- "Côte d'Ivoire"
 sffb$Area[sffb$Area=="Central African Rep"] <- "Central African Republic"
-# sffb$Area[sffb$Area=="Micronesia, Fed States of"]
-sffb$Area[sffb$Area=="French Guiana (Fr)"] <- "France"
-sffb$Area[sffb$Area=="Congo, Dem Rep of the"] <- "Democratic Republic of the Congo"
 sffb$Area[sffb$Area=="Brunei"] <- "Brunei Darussalam"
-sffb$Area[sffb$Area=="Congo, Rep of the"] <- "Congo"
 sffb$Area[sffb$Area=="Sao Tome & Principe"] <- "Sao Tome and Principe"
 sffb$Area[sffb$Area=="Tanzania"] <- "United Republic of Tanzania"
 sffb$Area[sffb$Area=="Solomon Is"] <- "Solomon Islands"
-sffb$Area[sffb$Area=="French Polynesia (Fr)"] <- "France"
 sffb$Area[sffb$Area=="Bolivia"] <- "Bolivia (Plurinational State of)"
-sffb$Area[sffb$Area=="Christmas I (Aus)"] <- "Australia"
-sffb$Area[sffb$Area=="Mayotte (Fr)"] <- "France"
-sffb$Area[sffb$Area=="Wallis & Futuna (Fr)"] <- "France"
-sffb$Area[sffb$Area=="American Samoa (US)"] <- "United States of America"
-sffb$Area[sffb$Area=="Niue (NZ)"] <- "New Zealand"
-sffb$Area[sffb$Area=="New Caledonia (Fr)"] <- "France"
-sffb$Area[sffb$Area=="Reunion (Fr)"] <- "France"
-sffb$Area[sffb$Area=="Pitcairn Is (UK)"] <- "United Kingdom of Great Britain and Northern Ireland"
-sffb$Area[sffb$Area=="Swaziland"] <- "Eswatini"
+# sffb$Area[sffb$Area=="Micronesia, Fed States of"]
 
-sffb <- left_join(sffb, csfb, by = "Area") 
+# ISLANDS
+# sffb$Area[sffb$Area=="Niue (NZ)"] <- "New Zealand"
+# sffb$Area[sffb$Area=="Turks & Caicos Is (UK)"] <- "United Kingdom of Great Britain and Northern Ireland"
+# sffb$Area[sffb$Area=="Montserrat (UK)"] <- "United Kingdom of Great Britain and Northern Ireland"
+# sffb$Area[sffb$Area=="Br Virgin Is (UK)"] <- "United Kingdom of Great Britain and Northern Ireland"
+# sffb$Area[sffb$Area=="Pitcairn Is (UK)"] <- "United Kingdom of Great Britain and Northern Ireland"
+# sffb$Area[sffb$Area=="Cayman Is (UK)"] <- "United Kingdom of Great Britain and Northern Ireland"
+# sffb$Area[sffb$Area=="Puerto Rico (US)"] <- "United States of America"
+# sffb$Area[sffb$Area=="Northern Mariana Is (US)"] <- "United States of America"
+# sffb$Area[sffb$Area=="American Samoa (US)"] <- "United States of America"
+# sffb$Area[sffb$Area=="Guam (US)"] <- "United States of America"
+# sffb$Area[sffb$Area=="US Virgin Is (US)"] <- "United States of America"
+# sffb$Area[sffb$Area=="Christmas I (Aus)"] <- "Australia"
+# sffb$Area[sffb$Area=="Spain [Canary Is]"] <- "Spain"
+# sffb$Area[sffb$Area=="Guadeloupe (Fr)"] <- "France"
+# sffb$Area[sffb$Area=="Martinique (Fr)"] <- "France"
+# sffb$Area[sffb$Area=="French Guiana (Fr)"] <- "France"
+# sffb$Area[sffb$Area=="French Polynesia (Fr)"] <- "France"
+# sffb$Area[sffb$Area=="Mayotte (Fr)"] <- "France"
+# sffb$Area[sffb$Area=="Wallis & Futuna (Fr)"] <- "France"
+# sffb$Area[sffb$Area=="New Caledonia (Fr)"] <- "France"
+# sffb$Area[sffb$Area=="Reunion (Fr)"] <- "France"
 
-plot(sffb[,"dependency_calorie"])
+# length(unique(sffb$Area))
+# sffb$Area[duplicated(sffb$Area)]
+# length(unique(csfb5$Area))
+# sfctry <- unique(sffb$Area)
+# fbctry <- unique(csfb5$Area)
+# extra_names <- sfctry[!(sfctry %in% fbctry)]
+# # (all names in rdc data are in global data)
+# fbctry[!(fbctry %in% sfctry)]
+# sfctry[grepl("iby", sfctry)]
+# fbctry[grepl("iber", fbctry)]
 
+csfb5_sf <- left_join(csfb5, sffb, by = "Area") %>% st_as_sf()
+
+plot(csfb5_sf[,"dependency_protein"])
+
+csfb5_sf[csfb5_sf$Area=="Niger", c("dependency_calorie", "geometry")] %>% plot()
 
 #### PREPARE POPULATION DATA #### 
 # This is necessary to scale nutrient food supply, which are expressed per capita.

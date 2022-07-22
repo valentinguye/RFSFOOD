@@ -19,7 +19,7 @@ neededPackages <- c("data.table", "plyr", "tidyr", "dplyr",  "Hmisc", "sjmisc", 
                     "DataCombine", 
                     "fixest", 
                     "boot", "fwildclusterboot", "sandwich",
-                    "ggplot2", "dotwhisker")
+                    "ggplot2", "dotwhisker", "leaflet", "htmltools")
 # Install them in their project-specific versions
 renv::restore(packages = neededPackages)
 
@@ -608,6 +608,12 @@ for(item in c(categories, cereals, oilcrops, vegetable_oils)){#
 # unique(fb$Element)
 # pfbsave <- pfb 
 
+
+
+
+
+#### MAKE STATISTICS OF INTEREST ---------------------------------------------------------------------------------
+
 ### Convert imports, exports, and domestic supply into their nutrient contents (they are in 1000 tonnes and we first convert them to kg, to match conversion factors)
 for(item in c(categories, cereals, oilcrops, vegetable_oils)){# 
   for(nutrient in c("kcal", "gprot", "gfat")){
@@ -618,7 +624,7 @@ for(item in c(categories, cereals, oilcrops, vegetable_oils)){#
                                                      pfb[, paste0(nutrient,"_per_kg -- ",item)]  
     
     pfb[, paste0("domsupply_",nutrient," -- ",item)] <- pfb[, paste0(item," -- ","Domestic supply quantity (1000 tonnes)")] * 1e6 * 
-                                                         pfb[, paste0(nutrient,"_per_kg -- ",item)]  
+                                                        pfb[, paste0(nutrient,"_per_kg -- ",item)]  
     
     # And add up export and production
     pfb[, paste0("gross_supply_",nutrient," -- ",item)] <- pfb[, paste0("domsupply_",nutrient," -- ",item)] + 
@@ -632,11 +638,8 @@ for(item in c(categories, cereals, oilcrops, vegetable_oils)){#
 # pfb[,grep("Miscellaneous", names(pfb), value = TRUE)] %>% head()
 
 
-
-
-#### MAKE STATISTICS OF INTEREST ---------------------------------------------------------------------------------
-
 ### SUM OVER CATEGORIES OF ITEMS 
+# (this is the operation that requires converting to commodities to nutrient in the first place)
 for(nutrient in c("kcal", "gprot", "gfat")){
   pfb <- dplyr::mutate(pfb, !!as.symbol(paste0("import_",nutrient,"_total")) := base::rowSums(across(.cols = any_of(paste0("import_",nutrient," -- ", categories)) ), na.rm = TRUE))
   pfb <- dplyr::mutate(pfb, !!as.symbol(paste0("gross_supply_",nutrient,"_total")) := base::rowSums(across(.cols = any_of(paste0("gross_supply_",nutrient," -- ", categories)) ), na.rm = TRUE))
@@ -684,13 +687,6 @@ csfb5 <- ddply(pfb, "Area", summarise,
               gross_supply_gprot_total = mean(gross_supply_gprot_total, na.rm = TRUE), 
               gross_supply_gfat_total = mean(gross_supply_gfat_total, na.rm = TRUE), 
               
-              # conversion factors, for some major items: 
-              !!as.symbol("kcal_per_kg -- Cereals - Excluding Beer") := mean(!!as.symbol("kcal_per_kg -- Cereals - Excluding Beer"), na.rm = TRUE), 
-              !!as.symbol("kcal_per_kg -- Vegetable Oils") := mean(!!as.symbol("kcal_per_kg -- Vegetable Oils"), na.rm = TRUE), 
-              !!as.symbol("gprot_per_kg -- Meat") := mean(!!as.symbol("gprot_per_kg -- Meat"), na.rm = TRUE), 
-              !!as.symbol("gprot_per_kg -- Fish, Seafood") := mean(!!as.symbol("gprot_per_kg -- Fish, Seafood"), na.rm = TRUE), 
-              !!as.symbol("gfat_per_kg -- Vegetable Oils") := mean(!!as.symbol("gfat_per_kg -- Vegetable Oils"), na.rm = TRUE), 
-              
               # Dependency through specific crops
               !!as.symbol("dependency_calorie -- Cereals - Excluding Beer") := mean(!!as.symbol("dependency_calorie -- Cereals - Excluding Beer"), na.rm = TRUE), 
               !!as.symbol("dependency_calorie -- Wheat and products") := mean(!!as.symbol("dependency_calorie -- Wheat and products"), na.rm = TRUE), 
@@ -704,8 +700,36 @@ csfb5 <- ddply(pfb, "Area", summarise,
               !!as.symbol("dependency_calorie -- Rape and Mustard Oil") := mean(!!as.symbol("dependency_calorie -- Rape and Mustard Oil"), na.rm = TRUE), 
               !!as.symbol("dependency_calorie -- Palm Oil") := mean(!!as.symbol("dependency_calorie -- Palm Oil"), na.rm = TRUE),
               
+              # import of specific crops 
+              !!as.symbol("import_kcal -- Cereals - Excluding Beer") := mean(!!as.symbol("import_kcal -- Cereals - Excluding Beer"), na.rm = TRUE), 
+              !!as.symbol("import_kcal -- Wheat and products") := mean(!!as.symbol("import_kcal -- Wheat and products"), na.rm = TRUE), 
+              !!as.symbol("import_kcal -- Rice (Milled Equivalent)") := mean(!!as.symbol("import_kcal -- Rice (Milled Equivalent)"), na.rm = TRUE), 
+              !!as.symbol("import_kcal -- Barley and products") := mean(!!as.symbol("import_kcal -- Barley and products"), na.rm = TRUE), 
+              !!as.symbol("import_kcal -- Maize and products") := mean(!!as.symbol("import_kcal -- Maize and products"), na.rm = TRUE), 
+              !!as.symbol("import_kcal -- Soyabeans") := mean(!!as.symbol("import_kcal -- Soyabeans"), na.rm = TRUE), 
+              !!as.symbol("import_kcal -- Vegetable Oils") := mean(!!as.symbol("import_kcal -- Vegetable Oils"), na.rm = TRUE), 
+              !!as.symbol("import_kcal -- Soyabean Oil") := mean(!!as.symbol("import_kcal -- Soyabean Oil"), na.rm = TRUE), 
+              !!as.symbol("import_kcal -- Sunflowerseed Oil") := mean(!!as.symbol("import_kcal -- Sunflowerseed Oil"), na.rm = TRUE), 
+              !!as.symbol("import_kcal -- Rape and Mustard Oil") := mean(!!as.symbol("import_kcal -- Rape and Mustard Oil"), na.rm = TRUE), 
+              !!as.symbol("import_kcal -- Palm Oil") := mean(!!as.symbol("import_kcal -- Palm Oil"), na.rm = TRUE),
+
+              # gross supply of specific crops 
+              !!as.symbol("gross_supply_kcal -- Cereals - Excluding Beer") := mean(!!as.symbol("gross_supply_kcal -- Cereals - Excluding Beer"), na.rm = TRUE), 
+              !!as.symbol("gross_supply_kcal -- Wheat and products") := mean(!!as.symbol("gross_supply_kcal -- Wheat and products"), na.rm = TRUE), 
+              !!as.symbol("gross_supply_kcal -- Rice (Milled Equivalent)") := mean(!!as.symbol("gross_supply_kcal -- Rice (Milled Equivalent)"), na.rm = TRUE), 
+              !!as.symbol("gross_supply_kcal -- Barley and products") := mean(!!as.symbol("gross_supply_kcal -- Barley and products"), na.rm = TRUE), 
+              !!as.symbol("gross_supply_kcal -- Maize and products") := mean(!!as.symbol("gross_supply_kcal -- Maize and products"), na.rm = TRUE), 
+              !!as.symbol("gross_supply_kcal -- Soyabeans") := mean(!!as.symbol("gross_supply_kcal -- Soyabeans"), na.rm = TRUE), 
+              !!as.symbol("gross_supply_kcal -- Vegetable Oils") := mean(!!as.symbol("gross_supply_kcal -- Vegetable Oils"), na.rm = TRUE), 
+              !!as.symbol("gross_supply_kcal -- Soyabean Oil") := mean(!!as.symbol("gross_supply_kcal -- Soyabean Oil"), na.rm = TRUE), 
+              !!as.symbol("gross_supply_kcal -- Sunflowerseed Oil") := mean(!!as.symbol("gross_supply_kcal -- Sunflowerseed Oil"), na.rm = TRUE), 
+              !!as.symbol("gross_supply_kcal -- Rape and Mustard Oil") := mean(!!as.symbol("gross_supply_kcal -- Rape and Mustard Oil"), na.rm = TRUE), 
+              !!as.symbol("gross_supply_kcal -- Palm Oil") := mean(!!as.symbol("gross_supply_kcal -- Palm Oil"), na.rm = TRUE),
+              
               # conversion factors, for some major items: 
               !!as.symbol("kcal_per_kg -- Cereals - Excluding Beer") := mean(!!as.symbol("kcal_per_kg -- Cereals - Excluding Beer"), na.rm = TRUE), 
+              !!as.symbol("gprot_per_kg -- Cereals - Excluding Beer") := mean(!!as.symbol("gprot_per_kg -- Cereals - Excluding Beer"), na.rm = TRUE), 
+              !!as.symbol("gfat_per_kg -- Cereals - Excluding Beer") := mean(!!as.symbol("gfat_per_kg -- Cereals - Excluding Beer"), na.rm = TRUE), 
               !!as.symbol("kcal_per_kg -- Vegetable Oils") := mean(!!as.symbol("kcal_per_kg -- Vegetable Oils"), na.rm = TRUE), 
               !!as.symbol("gprot_per_kg -- Meat") := mean(!!as.symbol("gprot_per_kg -- Meat"), na.rm = TRUE), 
               !!as.symbol("gprot_per_kg -- Fish, Seafood") := mean(!!as.symbol("gprot_per_kg -- Fish, Seafood"), na.rm = TRUE), 
@@ -729,13 +753,6 @@ csfb2 <- ddply(pfb[pfb$year == 2004 | pfb$year == 2005 | pfb$year == 2010 | pfb$
                gross_supply_gprot_total = mean(gross_supply_gprot_total, na.rm = TRUE), 
                gross_supply_gfat_total = mean(gross_supply_gfat_total, na.rm = TRUE), 
                
-               # conversion factors, for some major items: 
-               !!as.symbol("kcal_per_kg -- Cereals - Excluding Beer") := mean(!!as.symbol("kcal_per_kg -- Cereals - Excluding Beer"), na.rm = TRUE), 
-               !!as.symbol("kcal_per_kg -- Vegetable Oils") := mean(!!as.symbol("kcal_per_kg -- Vegetable Oils"), na.rm = TRUE), 
-               !!as.symbol("gprot_per_kg -- Meat") := mean(!!as.symbol("gprot_per_kg -- Meat"), na.rm = TRUE), 
-               !!as.symbol("gprot_per_kg -- Fish, Seafood") := mean(!!as.symbol("gprot_per_kg -- Fish, Seafood"), na.rm = TRUE), 
-               !!as.symbol("gfat_per_kg -- Vegetable Oils") := mean(!!as.symbol("gfat_per_kg -- Vegetable Oils"), na.rm = TRUE), 
-               
                # Dependency through specific crops
                !!as.symbol("dependency_calorie -- Cereals - Excluding Beer") := mean(!!as.symbol("dependency_calorie -- Cereals - Excluding Beer"), na.rm = TRUE), 
                !!as.symbol("dependency_calorie -- Wheat and products") := mean(!!as.symbol("dependency_calorie -- Wheat and products"), na.rm = TRUE), 
@@ -749,12 +766,41 @@ csfb2 <- ddply(pfb[pfb$year == 2004 | pfb$year == 2005 | pfb$year == 2010 | pfb$
                !!as.symbol("dependency_calorie -- Rape and Mustard Oil") := mean(!!as.symbol("dependency_calorie -- Rape and Mustard Oil"), na.rm = TRUE), 
                !!as.symbol("dependency_calorie -- Palm Oil") := mean(!!as.symbol("dependency_calorie -- Palm Oil"), na.rm = TRUE),
                
+               # import of specific crops 
+               !!as.symbol("import_kcal -- Cereals - Excluding Beer") := mean(!!as.symbol("import_kcal -- Cereals - Excluding Beer"), na.rm = TRUE), 
+               !!as.symbol("import_kcal -- Wheat and products") := mean(!!as.symbol("import_kcal -- Wheat and products"), na.rm = TRUE), 
+               !!as.symbol("import_kcal -- Rice (Milled Equivalent)") := mean(!!as.symbol("import_kcal -- Rice (Milled Equivalent)"), na.rm = TRUE), 
+               !!as.symbol("import_kcal -- Barley and products") := mean(!!as.symbol("import_kcal -- Barley and products"), na.rm = TRUE), 
+               !!as.symbol("import_kcal -- Maize and products") := mean(!!as.symbol("import_kcal -- Maize and products"), na.rm = TRUE), 
+               !!as.symbol("import_kcal -- Soyabeans") := mean(!!as.symbol("import_kcal -- Soyabeans"), na.rm = TRUE), 
+               !!as.symbol("import_kcal -- Vegetable Oils") := mean(!!as.symbol("import_kcal -- Vegetable Oils"), na.rm = TRUE), 
+               !!as.symbol("import_kcal -- Soyabean Oil") := mean(!!as.symbol("import_kcal -- Soyabean Oil"), na.rm = TRUE), 
+               !!as.symbol("import_kcal -- Sunflowerseed Oil") := mean(!!as.symbol("import_kcal -- Sunflowerseed Oil"), na.rm = TRUE), 
+               !!as.symbol("import_kcal -- Rape and Mustard Oil") := mean(!!as.symbol("import_kcal -- Rape and Mustard Oil"), na.rm = TRUE), 
+               !!as.symbol("import_kcal -- Palm Oil") := mean(!!as.symbol("import_kcal -- Palm Oil"), na.rm = TRUE),
+               
+               # gross supply of specific crops 
+               !!as.symbol("gross_supply_kcal -- Cereals - Excluding Beer") := mean(!!as.symbol("gross_supply_kcal -- Cereals - Excluding Beer"), na.rm = TRUE), 
+               !!as.symbol("gross_supply_kcal -- Wheat and products") := mean(!!as.symbol("gross_supply_kcal -- Wheat and products"), na.rm = TRUE), 
+               !!as.symbol("gross_supply_kcal -- Rice (Milled Equivalent)") := mean(!!as.symbol("gross_supply_kcal -- Rice (Milled Equivalent)"), na.rm = TRUE), 
+               !!as.symbol("gross_supply_kcal -- Barley and products") := mean(!!as.symbol("gross_supply_kcal -- Barley and products"), na.rm = TRUE), 
+               !!as.symbol("gross_supply_kcal -- Maize and products") := mean(!!as.symbol("gross_supply_kcal -- Maize and products"), na.rm = TRUE), 
+               !!as.symbol("gross_supply_kcal -- Soyabeans") := mean(!!as.symbol("gross_supply_kcal -- Soyabeans"), na.rm = TRUE), 
+               !!as.symbol("gross_supply_kcal -- Vegetable Oils") := mean(!!as.symbol("gross_supply_kcal -- Vegetable Oils"), na.rm = TRUE), 
+               !!as.symbol("gross_supply_kcal -- Soyabean Oil") := mean(!!as.symbol("gross_supply_kcal -- Soyabean Oil"), na.rm = TRUE), 
+               !!as.symbol("gross_supply_kcal -- Sunflowerseed Oil") := mean(!!as.symbol("gross_supply_kcal -- Sunflowerseed Oil"), na.rm = TRUE), 
+               !!as.symbol("gross_supply_kcal -- Rape and Mustard Oil") := mean(!!as.symbol("gross_supply_kcal -- Rape and Mustard Oil"), na.rm = TRUE), 
+               !!as.symbol("gross_supply_kcal -- Palm Oil") := mean(!!as.symbol("gross_supply_kcal -- Palm Oil"), na.rm = TRUE),
+               
                # conversion factors, for some major items: 
                !!as.symbol("kcal_per_kg -- Cereals - Excluding Beer") := mean(!!as.symbol("kcal_per_kg -- Cereals - Excluding Beer"), na.rm = TRUE), 
+               !!as.symbol("gprot_per_kg -- Cereals - Excluding Beer") := mean(!!as.symbol("gprot_per_kg -- Cereals - Excluding Beer"), na.rm = TRUE), 
+               !!as.symbol("gfat_per_kg -- Cereals - Excluding Beer") := mean(!!as.symbol("gfat_per_kg -- Cereals - Excluding Beer"), na.rm = TRUE), 
                !!as.symbol("kcal_per_kg -- Vegetable Oils") := mean(!!as.symbol("kcal_per_kg -- Vegetable Oils"), na.rm = TRUE), 
                !!as.symbol("gprot_per_kg -- Meat") := mean(!!as.symbol("gprot_per_kg -- Meat"), na.rm = TRUE), 
                !!as.symbol("gprot_per_kg -- Fish, Seafood") := mean(!!as.symbol("gprot_per_kg -- Fish, Seafood"), na.rm = TRUE), 
                !!as.symbol("gfat_per_kg -- Vegetable Oils") := mean(!!as.symbol("gfat_per_kg -- Vegetable Oils"), na.rm = TRUE)
+               
               )
 
 summary(csfb5$dependency_calorie)
@@ -859,11 +905,130 @@ sffb$Area[sffb$Area=="Bolivia"] <- "Bolivia (Plurinational State of)"
 # sfctry[grepl("iby", sfctry)]
 # fbctry[grepl("iber", fbctry)]
 
+
+# simplify before plotting
+sffb <- st_transform(sffb, crs = 4088)
+
+sffb$geometry <- st_simplify(sffb$geometry, dTolerance = 1000)
+
+sffb <- st_transform(sffb, crs = 4326)
+
 csfb5_sf <- left_join(csfb5, sffb, by = "Area") %>% st_as_sf()
 
+
+  
+#### PLOT TOTAL DEPENDENCY #### 
+pal_dep <- colorNumeric("viridis", # "viridis" (green-purple), "magma" (yellow-purple), "inferno" (like magma), or "plasma", "BuPu", "Greens"
+                        domain = st_drop_geometry(csfb5_sf[,"dependency_calorie"]),
+                        #bins = 4, 
+                        na.color = "transparent", 
+                        reverse = F)
+
+
+# popup
+csfb5_sf$popup_total <- paste0(csfb5_sf$Area, "<br/>",
+                               "Imports: ", formatC(csfb5_sf$import_kcal_total/1e6, format = "e", digits = 2), " bn cal", "<br/>",
+                               "Supply + Exports: ", formatC(csfb5_sf$gross_supply_kcal_total/1e6,format = "e", digits = 2), " bn cal", "<br/>"#,mills$lat, " ", mills$lon
+)
+
+markerOptions(riseOnHover = TRUE)
+
+
+leaflet() %>% 
+  addTiles()%>%
+  addProviderTiles(providers$Esri.WorldGrayCanvas, group ="ESRI") %>%
+  setView(lat = 0, 
+          lng = 0, 
+          zoom = 1) %>% 
+  addPolygons(data = csfb5_sf, 
+              opacity = 0, color = "black", weight = 2, 
+              fill = TRUE, fillColor = ~pal_dep(csfb5_sf$dependency_calorie), fillOpacity = 0.5,
+              popup = ~csfb5_sf$popup_total, 
+              popupOptions = popupOptions(riseOnHover = TRUE, 
+                                          bringToFront = TRUE),
+              highlightOptions = highlightOptions(bringToFront = TRUE)) %>% 
+  # addMarkers(data = csfb5_sf, 
+  #            popup = ~csfb5_sf$popup_total,
+  #            options = markerOptions(riseOnHover = TRUE)) %>% 
+  addLegend(pal = pal_dep,  
+            values = csfb5_sf$dependency_calorie, 
+            bins = 5, opacity = 0.4,
+            title = "Import dependency <br/> for calories, total",
+            position = "bottomright") 
+
+
+
+#### PLOT CONVERSION FACTORS #### 
+pal_dep <- colorNumeric("viridis", # "viridis" (green-purple), "magma" (yellow-purple), "inferno" (like magma), or "plasma", "BuPu", "Greens"
+                        domain = st_drop_geometry(csfb5_sf[,"kcal_per_kg -- Cereals - Excluding Beer"]),
+                        #bins = 4, 
+                        na.color = "transparent", 
+                        reverse = F)
+
+
+# popup
+csfb5_sf$popup_convfact <- paste0(csfb5_sf$Area, "<br/>",
+                                  "kcal per kg cereals (excl. beer): ", round(csfb5_sf$`kcal_per_kg -- Cereals - Excluding Beer`,1), "<br/>",
+                                  "g protein per kg cereals (excl. beer): ", round(csfb5_sf$`gprot_per_kg -- Cereals - Excluding Beer`,1), "<br/>",
+                                  "g fat per kg cereals (excl. beer): ", round(csfb5_sf$`gfat_per_kg -- Cereals - Excluding Beer`,1), "<br/>",
+                                  "kcal per kg vegetable oils: ", round(csfb5_sf$`kcal_per_kg -- Vegetable Oils`,1), "<br/>",
+                                  "gprot per kg meat: ", round(csfb5_sf$`gprot_per_kg -- Meat`,1), "<br/>",
+                                  "gprot per kg fish & seafood: ", round(csfb5_sf$`gprot_per_kg -- Fish, Seafood`,1), "<br/>"
+)
+
+leaflet() %>% 
+  addTiles()%>%
+  addProviderTiles(providers$Esri.WorldGrayCanvas, group ="ESRI") %>%
+  setView(lat = 0, 
+          lng = 0, 
+          zoom = 1) %>% 
+  addPolygons(data = csfb5_sf, 
+              opacity = 0, color = "black", weight = 2, 
+              fill = TRUE, fillColor = ~pal_dep(csfb5_sf$`kcal_per_kg -- Cereals - Excluding Beer`), fillOpacity = 0.5,
+              popup = ~csfb5_sf$popup_convfact, 
+              popupOptions = popupOptions(riseOnHover = TRUE, 
+                                          bringToFront = TRUE),
+              highlightOptions = highlightOptions(bringToFront = TRUE)) %>% 
+  # addMarkers(data = csfb5_sf, 
+  #            popup = ~csfb5_sf$popup_convfact,
+  #            options = markerOptions(riseOnHover = TRUE)) %>% 
+  addLegend(pal = pal_dep,  
+            values = csfb5_sf$`kcal_per_kg -- Cereals - Excluding Beer`, 
+            bins = 5, opacity = 0.4,
+            title = "Nutritional density <br/> of cereals (kcal/kg) <br/> (2001-2005)",
+            position = "bottomright") 
+
+plot(csfb5_sf[,"dependency_calorie"])
 plot(csfb5_sf[,"dependency_protein"])
+plot(csfb5_sf[,"gross_supply_kcal_total"])
+plot(csfb5_sf[,"import_kcal_total"])
+plot(csfb5_sf[,"dependency_calorie -- Cereals - Excluding Beer"])
+plot(csfb5_sf[,"dependency_calorie -- Wheat and products"])
+plot(csfb5_sf[,"dependency_calorie -- Rice (Milled Equivalent)"])
+plot(csfb5_sf[,"dependency_calorie -- Maize and products"])
+plot(csfb5_sf[,"dependency_calorie -- Soyabeans"])
+plot(csfb5_sf[,"dependency_calorie -- Vegetable Oils"])
+plot(csfb5_sf[,"dependency_calorie -- Soyabean Oil"])
+plot(csfb5_sf[,"dependency_calorie -- Sunflowerseed Oil"])
+plot(csfb5_sf[,"dependency_calorie -- Palm Oil"])
+
+plot(csfb5_sf[,"kcal_per_kg -- Cereals - Excluding Beer"])
+plot(csfb5_sf[,"kcal_per_kg -- Vegetable Oils"])
+plot(csfb5_sf[,"gprot_per_kg -- Meat"])
+plot(csfb5_sf[,"gprot_per_kg -- Fish, Seafood"])
+plot(csfb5_sf[,"gfat_per_kg -- Vegetable Oils"])
+
 
 csfb5_sf[csfb5_sf$Area=="Niger", c("dependency_calorie", "geometry")] %>% plot()
+
+
+
+
+
+
+
+
+
 
 #### PREPARE POPULATION DATA #### 
 # This is necessary to scale nutrient food supply, which are expressed per capita.

@@ -145,7 +145,7 @@ unique(sfp$price_type) # Retail, Wage, Wholesale
 
 
 # manage time var
-sub(pattern = "\-(.*)", replacement = "", x= sfp$period_date)
+# sub(pattern = "\-(.*)", replacement = "", x= sfp$period_date)
 
 nrow(sfp)
 sfp$year <- sapply(str_split( sfp$period_date, pattern = "-"), FUN = function(date){date[1]}) 

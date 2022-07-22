@@ -26,11 +26,12 @@
 # Specify project-wide packages to install
 neededPackages <- c("data.table", "plyr", "tidyr", "dplyr",  "Hmisc", "sjmisc", "stringr",
                     "here", "readstata13", "foreign", "readxl", "writexl",
+                    "raster", "rgdal", "sp",  "sf",
                     "knitr", "kableExtra",
                     "DataCombine", 
                     "fixest", 
                     "boot", "fwildclusterboot", "sandwich",
-                    "ggplot2", "dotwhisker")
+                    "ggplot2", "dotwhisker", "leaflet", "htmltools")
 
 
 # Note that from ?renv::restore 
@@ -90,7 +91,7 @@ if(FALSE){
   library(sjmisc)
   library(stringr)
   library(here)
-  library(DescTools)
+  # library(DescTools)
   library(foreign)
   library(readxl)
   library(writexl)
@@ -116,7 +117,7 @@ if(renv:::renv_download_method() != getOption("download.file.method")){
 }
 
 # If new packages are needed along the project data processing workflow, one should: 
-new_pck <- c("gdalUtils")
+new_pck <- c("htmltools")
 # 1. install the packages in the project library (the default if you are within the project)
 install.packages(new_pck)
 # devtools::install_github("julianhinz/R_glmhdfe")

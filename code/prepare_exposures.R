@@ -18,7 +18,7 @@ neededPackages <- c("data.table", "plyr", "tidyr", "dplyr",  "Hmisc", "sjmisc", 
                     "knitr", "kableExtra",
                     "DataCombine", 
                     "fixest", 
-                    "boot", "fwildclusterboot", "sandwich",
+                    "boot",  "sandwich",# "fwildclusterboot",
                     "ggplot2", "dotwhisker", "leaflet", "htmltools")
 # Install them in their project-specific versions
 renv::restore(packages = neededPackages)
@@ -152,7 +152,7 @@ year <- 2001
 wide_fb_list <- list()
 
 for(year in pretreatment_years){
-  fb <- read.csv(here("input_data", "exposure_variables", paste0("FAOSTAT_",year,"_allcountries_foodbalances_aggritems.csv")))
+  fb <- read.csv(here("input_data", "exposure_variables", paste0("FAOSTAT-oldfoodbalances_allcountries_aggritems_",year,".csv")))
 
   # unique(fb$Item)[grepl("meal", unique(fb$Item))]
   
@@ -349,13 +349,13 @@ pfb <- bind_rows(wide_fb_list)
 
 
 
-#### RDC & LIBYA -----------------------------------------------------------
+#### RDC, LIBYA, SYRIA & PAPUA NEW GUINEA -----------------------------------------------------------
 
 # Let us handle here the fact that the Democratic Republic of Congo is missing in FAOSTAT Food Balance data before 2010. 
 wide_rdc_list <- list()
-rdc_years <- c(2010, 2011)
-for(year in rdc_years){
-  rdc <- read.csv(here("input_data", "exposure_variables", paste0("FAOSTAT_",year,"_RDCLibya_foodbalances_aggritems.csv")))
+missing_country_years <- c(2010, 2011)
+for(year in missing_country_years){
+  rdc <- read.csv(here("input_data", "exposure_variables", paste0("FAOSTAT-foodbalances_missingcountries_aggritems_",year,".csv")))
 
   # unique(rdc$Item)[grepl("meal", unique(rdc$Item))]
   
@@ -507,7 +507,7 @@ for(year in rdc_years){
   # Keep track of the year 
   wide_rdc$year <- year
   
-  wide_rdc_list[[match(year, rdc_years)]] <- wide_rdc
+  wide_rdc_list[[match(year, missing_country_years)]] <- wide_rdc
   
 }
 prdc <- bind_rows(wide_rdc_list)
@@ -625,6 +625,7 @@ for(item in c(categories, cereals, oilcrops, vegetable_oils)){#
     
     pfb[, paste0("domsupply_",nutrient," -- ",item)] <- pfb[, paste0(item," -- ","Domestic supply quantity (1000 tonnes)")] * 1e6 * 
                                                         pfb[, paste0(nutrient,"_per_kg -- ",item)]  
+    # casing is correct here: capital Q for import and export, not for domestic supply
     
     # And add up export and production
     pfb[, paste0("gross_supply_",nutrient," -- ",item)] <- pfb[, paste0("domsupply_",nutrient," -- ",item)] + 
@@ -663,13 +664,13 @@ summary(pfb$dependency_calorie)
 # Dependency through some selected crops
 for(item in selected_items){
   pfb[, paste0("dependency_calorie -- ",item)] <- pfb[, paste0("import_kcal -- ",item)] /
-                                                  pfb[, paste0("gross_supply_kcal -- ",item)]
+                                                  pfb[, "gross_supply_kcal_total"]
   
   pfb[, paste0("dependency_protein -- ",item)] <- pfb[, paste0("import_gprot -- ",item)] /
-                                                  pfb[, paste0("gross_supply_gprot -- ",item)]
+                                                  pfb[, "gross_supply_gprot_total"]
   
   pfb[, paste0("dependency_fat -- ",item)] <- pfb[, paste0("import_gfat -- ",item)] /
-                                              pfb[, paste0("gross_supply_gfat -- ",item)]
+                                              pfb[, "gross_supply_gfat_total"]
 }
 
 
@@ -808,9 +809,16 @@ summary(csfb5$dependency_protein)
 summary(csfb5$dependency_fat)
 
 
+#### SAVE OUT -------------------------------------------------------------------------------------------------------
+saveRDS(csfb5, file = here("temp_data", "exposures", "dependency_5ya.Rdata"))
+saveRDS(csfb2, file = here("temp_data", "exposures", "dependency_2ya.Rdata"))
+
 #### Data exploration  -----------------------------------------------------------------------------------------------
 
 sffb <- st_read(here("input_data", "Global_LSIB_Polygons_Detailed"))
+
+# necessary for simplifying below, and better for unioning 
+sffb <- st_transform(sffb, crs = 4088)
 
 names(sffb)[names(sffb) == "COUNTRY_NA"] <- "Area"
 # sffb[grepl("ongo", sffb$Area), ]
@@ -830,15 +838,17 @@ sffb$Area[sffb$Area=="China"] <- "China, mainland" # NOTICE THIS
 sffb$Area[sffb$Area=="Hong Kong (Ch)"] <- "China, Hong Kong SAR"
 sffb$Area[sffb$Area=="Macau (Ch)"] <- "China, Macao SAR"
 # sffb$Area[sffb$Area=="Taiwan"] 
-sffb$Area[sffb$Area=="Serbia"] <- "Serbia and Montenegro" # Montenegro independent since 2006, after our data period
 
 # for Sudan and South Sudan, they will be splitted in the anaysis period. They will have outcome data separately. 
 # But they will have exactly the same treatment. So we can treat them as within the same cluster, 
 # or merge them into a single country, with average outcome. 
 sffb[sffb$Area=="Sudan", "geometry"] <- st_union(sffb[sffb$Area == "Sudan", "geometry"], 
-                                                      sffb[sffb$Area == "South Sudan", "geometry"]) # %>% dplyr::select(geometry)
-
+                                                       sffb[sffb$Area == "South Sudan", "geometry"]) # %>% dplyr::select(geometry)
 sffb$Area[sffb$Area=="Sudan"] <- "Sudan (former)" # South Sudan independent since 2005, after our data period
+
+sffb[sffb$Area=="Serbia", "geometry"] <- st_union(sffb[sffb$Area == "Serbia", "geometry"], 
+                                                  sffb[sffb$Area == "Montenegro", "geometry"]) # %>% dplyr::select(geometry)
+sffb$Area[sffb$Area=="Serbia"] <- "Serbia and Montenegro" # Montenegro independent since 2006, after our data period
 
 # Countries for which it's simply a matter of different way to write the name down
 sffb$Area[sffb$Area=="Congo, Dem Rep of the"] <- "Democratic Republic of the Congo"
@@ -846,6 +856,7 @@ sffb$Area[sffb$Area=="Macedonia"] <- "North Macedonia"
 sffb$Area[sffb$Area=="United Kingdom"] <- "United Kingdom of Great Britain and Northern Ireland"
 sffb$Area[sffb$Area=="United States"] <- "United States of America"
 sffb$Area[sffb$Area=="Russia"] <- "Russian Federation"
+sffb$Area[sffb$Area=="Syria"] <- "Syrian Arab Republic"
 sffb$Area[sffb$Area=="Bosnia & Herzegovina"] <- "Bosnia and Herzegovina"
 sffb$Area[sffb$Area=="Korea, North"] <- "Democratic People's Republic of Korea"
 sffb$Area[sffb$Area=="Korea, South"] <- "Republic of Korea"
@@ -902,20 +913,19 @@ sffb$Area[sffb$Area=="Bolivia"] <- "Bolivia (Plurinational State of)"
 # extra_names <- sfctry[!(sfctry %in% fbctry)]
 # # (all names in rdc data are in global data)
 # fbctry[!(fbctry %in% sfctry)]
-# sfctry[grepl("iby", sfctry)]
-# fbctry[grepl("iber", fbctry)]
+# sfctry[grepl("yri", sfctry)]
+# fbctry[grepl("apua", fbctry)]
+pfbnames[grepl("uantity", pfbnames)]
 
 
 # simplify before plotting
-sffb <- st_transform(sffb, crs = 4088)
-
 sffb$geometry <- st_simplify(sffb$geometry, dTolerance = 1000)
 
 sffb <- st_transform(sffb, crs = 4326)
 
 csfb5_sf <- left_join(csfb5, sffb, by = "Area") %>% st_as_sf()
 
-
+csfb5_sf$Area[st_is_empty(csfb5_sf$geometry)]
   
 #### PLOT TOTAL DEPENDENCY #### 
 pal_dep <- colorNumeric("viridis", # "viridis" (green-purple), "magma" (yellow-purple), "inferno" (like magma), or "plasma", "BuPu", "Greens"
@@ -928,10 +938,9 @@ pal_dep <- colorNumeric("viridis", # "viridis" (green-purple), "magma" (yellow-p
 # popup
 csfb5_sf$popup_total <- paste0(csfb5_sf$Area, "<br/>",
                                "Imports: ", formatC(csfb5_sf$import_kcal_total/1e6, format = "e", digits = 2), " bn cal", "<br/>",
-                               "Supply + Exports: ", formatC(csfb5_sf$gross_supply_kcal_total/1e6,format = "e", digits = 2), " bn cal", "<br/>"#,mills$lat, " ", mills$lon
+                               "Supply + Exports: ", formatC(csfb5_sf$gross_supply_kcal_total/1e6,format = "e", digits = 2), " bn cal", "<br/>"
 )
 
-markerOptions(riseOnHover = TRUE)
 
 
 leaflet() %>% 
@@ -946,7 +955,8 @@ leaflet() %>%
               popup = ~csfb5_sf$popup_total, 
               popupOptions = popupOptions(riseOnHover = TRUE, 
                                           bringToFront = TRUE),
-              highlightOptions = highlightOptions(bringToFront = TRUE)) %>% 
+              highlightOptions = highlightOptions(bringToFront = TRUE)
+              ) %>% 
   # addMarkers(data = csfb5_sf, 
   #            popup = ~csfb5_sf$popup_total,
   #            options = markerOptions(riseOnHover = TRUE)) %>% 
@@ -1032,7 +1042,7 @@ csfb5_sf[csfb5_sf$Area=="Niger", c("dependency_calorie", "geometry")] %>% plot()
 
 #### PREPARE POPULATION DATA #### 
 # This is necessary to scale nutrient food supply, which are expressed per capita.
-pop <- read.csv(here("input_data", "exposure_variables", "FAOSTAT_20012005_population.csv"))
+pop <- read.csv(here("input_data", "exposure_variables", "FAOSTAT-oldfoodbalances_allcountries_population_20012005.csv"))
 head(pop) 
 
 # note that Unit is 1000 persons

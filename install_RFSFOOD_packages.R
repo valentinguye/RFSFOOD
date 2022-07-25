@@ -31,7 +31,7 @@ neededPackages <- c("data.table", "plyr", "tidyr", "dplyr",  "Hmisc", "sjmisc", 
                     "DataCombine", 
                     "fixest", 
                     "boot", "fwildclusterboot", "sandwich",
-                    "ggplot2", "dotwhisker", "leaflet", "htmltools")
+                    "ggplot2", "dotwhisker", "broomExtra", "leaflet", "htmltools")
 
 
 # Note that from ?renv::restore 
@@ -108,6 +108,7 @@ if(FALSE){
   library(ggplot2)
  
   library(dotwhisker)
+  library(broomExtra) # this is an attached package with dotwhisker
 
 }
 
@@ -117,7 +118,7 @@ if(renv:::renv_download_method() != getOption("download.file.method")){
 }
 
 # If new packages are needed along the project data processing workflow, one should: 
-new_pck <- c("htmltools")
+new_pck <- c("broomExtra")
 # 1. install the packages in the project library (the default if you are within the project)
 install.packages(new_pck)
 # devtools::install_github("julianhinz/R_glmhdfe")
